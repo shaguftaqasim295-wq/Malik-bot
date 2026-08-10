@@ -1,33 +1,51 @@
 import time
 from datetime import datetime
+import requests
+
+# Aapki di gayi details
+TOKEN = "8689746853:AAHgj8KPZ6jUcejQ7vKmv_jcAjhwUMAz-3Q"
+CHAT_ID = "@TradingMasterforex5099"
+
+def send_telegram_signal(message):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+    try:
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            print("Signal successfully sent to channel!")
+        else:
+            print(f"Failed to send signal: {response.text}")
+    except Exception as e:
+        print(f"Error connecting to Telegram: {e}")
 
 def analyze_and_send_signal():
-    # 5 minute candle close hone ka wait karein
-    current_time = datetime.now()
-    
-    # Dummy logic for candle strength detection
-    # Yahan aap apni broker ya feed ki candle data (Open, Close, High, Low) lagayenge
-    candle_color = "GREEN"  # Ya RED (jo bhi strong candle bane)
-    is_strong_candle = True  # True jab candle strong ho
+    # 5 minute candle close hone par signal generate karne ka logic
+    # Yahan aap apni broker ya data feed se candle ki values lenge
+    candle_color = "GREEN"  # Ya "RED"
+    is_strong_candle = True # True jab candle strong ho
     
     if is_strong_candle:
         direction = "UP" if candle_color == "GREEN" else "DOWN"
         
-        # Signal format with 2-minute expiry and 1-step MTG
         signal_message = (
-            f"📊 **VIP SIGNAL ALERT** 📊\n\n"
-            f"⏰ Timeframe: 5 Minutes Candle\n"
-            f"🎯 Direction: **{direction}**\n"
-            f"⏱️ Expiry: **2 Minutes**\n"
-            f"🔄 Martingale: **1 Step MTG** (if loss)\n"
+            f"📊 *VIP TRADING SIGNAL* 📊\n\n"
+            f"⏰ Timeframe: *5 Minutes Candle*\n"
+            f"🎯 Direction: *{direction}*\n"
+            f"⏱️ Expiry: *2 Minutes*\n"
+            f"🔄 Martingale: *1 Step MTG* (if loss)\n\n"
             f"⚠️ Trade at your own risk!"
         )
         
-        # Yahan Telegram channel par message bhejne ka function aayega
-        print(signal_message)
+        send_telegram_signal(signal_message)
 
-# Loop jo har 5 minute baad chalega
-while True:
-    analyze_and_send_signal()
-    # 5 minute (300 seconds) ka delay
-    time.sleep(300)
+# Main Loop - Har 5 minute (300 seconds) baad chalega
+if __name__ == "__main__":
+    print("Bot is running and waiting for 5-minute intervals...")
+    while True:
+        analyze_and_send_signal()
+        # 5 minute wait karega agle signal ke liye
+        time.sleep(300)
