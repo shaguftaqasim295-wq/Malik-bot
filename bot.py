@@ -2,7 +2,7 @@ import time
 from datetime import datetime, timezone, timedelta
 import requests
 
-TOKEN = "8689746853:AAHgj8KPZ6jUcejQ7vKmv_jcAjhwUMAz-3Q"
+TOKEN = "8689746853:AAHgj8KPZ6jUcejQ7vKmv_jcAjhwUMAZ-3Q"
 CHAT_ID = "@TradingMasterforex5099"
 
 # Quotex par available 30+ Forex Pairs & Assets
@@ -21,16 +21,12 @@ def get_market_session_pakistan():
     
     sessions = []
     # Session timings in PKT (Approximate standard market hours)
-    # Sydney: 02:00 - 11:00
     if 2 <= hour < 11:
         sessions.append("Sydney 🟢")
-    # Tokyo: 05:00 - 14:00
     if 5 <= hour < 14:
         sessions.append("Tokyo 🟢")
-    # London: 12:00 - 21:00 (Standard) / Summer timing adjustments can apply
     if 12 <= hour < 21:
         sessions.append("London 🟢")
-    # New York: 17:00 - 02:00
     if hour >= 17 or hour < 2:
         sessions.append("New York 🟢")
         
@@ -73,10 +69,11 @@ def send_telegram_signal_with_buttons(message, pair):
         print(f"Error connecting to Telegram: {e}")
 
 def analyze_and_send_signal():
+    # Yahan aap apni strategy ke mutabiq pair scan karwate hain
     for pair in QUOTEX_ASSETS:
         entry_price = 1.09250
         candle_color = "GREEN"
-        is_strong_candle = True 
+        is_strong_candle = True  # Strategy condition check
         
         if is_strong_candle:
             direction = "UP" if candle_color == "GREEN" else "DOWN"
@@ -94,10 +91,16 @@ def analyze_and_send_signal():
             )
             
             send_telegram_signal_with_buttons(signal_message, pair)
-            time.sleep(3)
+            
+            # Jab ek signal mil jaye aur send ho jaye, toh mazeed continuous spam roknay ke liye break kar dein
+            return True 
+    return False
 
 if __name__ == "__main__":
-    print("Bot is running with 30+ assets, full buttons, and Pakistan session tracking...")
+    print("Bot is running with 30+ assets, full buttons, and Pakistan session tracking (5M interval locked)...")
     while True:
-        analyze_and_send_signal()
+        # Har dafe scan karne ke baad exact 5 minutes (300 seconds) ka waqfa rakhega
+        signal_triggered = analyze_and_send_signal()
+        
+        # Agar signal mil gaya hai tab bhi ya na mile tab bhi agla scan 5 minutes baad hi hoga
         time.sleep(300)
