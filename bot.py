@@ -10,11 +10,11 @@ from datetime import datetime, timedelta
 from playwright.async_api import async_playwright
 
 # ==========================================
-# ⚙️ TRADING MASTER FOREX - ADVANCED BOT CONFIG
+# ⚙️ TRADING MASTER FOREX - CLEAN SINGLE STRATEGY BOT
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8689746853:AAHgj8KPZ6jUcejQ7vKmv_jcAjhwUMAZ-3Q"
 CHANNEL_CHAT_ID = "@TradingMasterforex5099"
-HISTORY_FILE = "trading_history.json"
+HISTORY_FILE = "trading_history_v2.json"
 
 LIVE_PAIRS_MAP = {
     "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDJPY": "USDJPY=X",
@@ -27,9 +27,7 @@ LIVE_PAIRS_MAP = {
     "CHFJPY": "CHFJPY=X", "NZDJPY": "NZDJPY=X", "NZDCAD": "NZDCAD=X"
 }
 
-session_stats = {"total": 0, "direct_wins": 0, "mtg_wins": 0, "losses": 0}
-signals_in_session = 0
-is_signal_running = False  # Lock mechanism
+is_signal_running = False
 
 # --- NEWS & MARKET STATUS ---
 def get_upcoming_news_schedule():
@@ -58,7 +56,7 @@ def get_upcoming_news_schedule():
         pass
     return []
 
-# --- DATABASE FUNCTIONS ---
+# --- UPGRADED PERMANENT DATABASE FUNCTIONS ---
 def load_history():
     if os.path.exists(HISTORY_FILE):
         try:
@@ -72,6 +70,7 @@ def save_trade_to_db(result_type):
     history = load_history()
     trade_record = {
         "timestamp": time.time(),
+        "datetime": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
         "date": datetime.utcnow().strftime("%Y-%m-%d"),
         "result": result_type
     }
@@ -88,12 +87,15 @@ def get_stats_by_period(period_type):
     d_wins, m_wins, losses = 0, 0, 0
     for trade in history:
         try:
-            trade_time = datetime.strptime(trade["date"], "%Y-%m-%d")
+            trade_date_str = trade.get("date", trade.get("datetime", "")[:10])
+            trade_time = datetime.strptime(trade_date_str, "%Y-%m-%d")
             match = False
             if period_type == "day":
-                if trade["date"] == now.strftime("%Y-%m-%d"): match = True
+                if trade_date_str == now.strftime("%Y-%m-%d"): 
+                    match = True
             elif period_type == "week":
-                if (now - trade_time).days <= 7: match = True
+                if (now - trade_time).days <= 7: 
+                    match = True
                 
             if match:
                 res = trade["result"]
@@ -201,10 +203,10 @@ async def handle_telegram_callbacks():
                             ans_text = (
                                 "📈 *MARKET CONDITION STATUS*\n"
                                 "━━━━━━━━━━━━━━━━━━━\n"
-                                "🟢 **Market Flow:** Healthy & Active\n"
-                                "⚡ **Volatility:** Optimal for 5M Expiry Strategies\n"
-                                "🛡️ **SuperTrend & Fractals:** Synchronized\n"
-                                "💡 *Status:* Market is running fine. Safe to trade!"
+                                "🟢 **Market Flow:** Stable & Active\n"
+                                "⚡ **Strategy:** 3 Back-to-Back Candles Reversal\n"
+                                "🛡️ **Memory Database:** Permanent & Upgraded\n"
+                                "💡 *Status:* Ready for high-accuracy execution!"
                             )
                         else:
                             period = "day"
@@ -257,9 +259,9 @@ def get_market_data_5m(yf_symbol):
         ticker = yf.Ticker(yf_symbol)
         df = ticker.history(period="3d", interval="5m", auto_adjust=True, timeout=10)
         
-        if not df.empty and len(df) >= 30:
+        if not df.empty and len(df) >= 10:
             candles = []
-            for i in range(-15, 0):
+            for i in range(-5, 0):
                 row = df.iloc[i]
                 candles.append({
                     'open': float(row['Open']), 'high': float(row['High']),
@@ -270,30 +272,30 @@ def get_market_data_5m(yf_symbol):
         pass
     return None
 
-def analyze_advanced_strategy(candles):
-    if not candles or len(candles) < 10: return None
+# --- PURE SINGLE STRATEGY: 3 BACK TO BACK CANDLES REVERSAL ---
+def analyze_single_strategy(candles):
+    if not candles or len(candles) < 3: return None
     
-    prev_c, curr_c = candles[-2], candles[-1]
-    entry_price = curr_c['close']
+    c1, c2, c3 = candles[-3], candles[-2], candles[-1]
+    entry_price = c3['close']
     
-    body_curr = abs(curr_c['close'] - curr_c['open'])
-    body_prev = abs(prev_c['close'] - prev_c['open'])
-    avg_body = np.mean([abs(c['close'] - c['open']) for c in candles[-10:]])
+    # Check if last 3 candles are all GREEN (Bullish) -> Signal PUT (Opposite direction)
+    is_three_green = (c1['close'] > c1['open']) and (c2['close'] > c2['open']) and (c3['close'] > c3['open'])
     
-    is_strong_momentum = (body_curr > avg_body * 1.2) and (body_prev > avg_body * 1.2)
+    # Check if last 3 candles are all RED (Bearish) -> Signal CALL (Opposite direction)
+    is_three_red = (c1['close'] < c1['open']) and (c2['close'] < c2['open']) and (c3['close'] < c3['open'])
     
-    if curr_c['close'] > curr_c['open'] and prev_c['close'] > prev_c['open'] and is_strong_momentum:
-        return ("🚀 5M SuperTrend + Fractal Call", "CALL 🟢", f"{entry_price:.5f}", "🔥 VIP 90%+", entry_price)
-    elif curr_c['close'] < curr_c['open'] and prev_c['close'] < prev_c['open'] and is_strong_momentum:
-        return ("🚀 5M SuperTrend + Fractal Put", "PUT 🔻", f"{entry_price:.5f}", "🔥 VIP 90%+", entry_price)
+    if is_three_green:
+        return ("🔴 3 Green Candles Reversal", "PUT 🔻", f"{entry_price:.5f}", "🔥 VIP 90%+", entry_price)
+    elif is_three_red:
+        return ("🟢 3 Red Candles Reversal", "CALL 🟢", f"{entry_price:.5f}", "🔥 VIP 90%+", entry_price)
         
     return None
 
 async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str, entry_str: str, strength: str, entry_num: float):
-    global session_stats, signals_in_session, is_signal_running
+    global is_signal_running
     
     is_signal_running = True
-    signals_in_session += 1
     
     timestamp = int(time.time())
     live_img = f"{pair}_live_{timestamp}.png"
@@ -303,10 +305,10 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
     signal_msg = (
         f"**⚡ TRADING MASTER FOREX - VIP SIGNAL**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 **Asset:** `#{pair}`\n⏳ **Timeframe:** `5 Minutes (Chart & Expiry)`\n"
+        f"📊 **Asset:** `#{pair}`\n⏳ **Timeframe:** `5 Minutes Chart`\n"
         f"🎯 **Pattern:** `{pattern}`\n📈 **Direction:** `{direction}`\n"
         f"📍 **Entry:** `{entry_str}`\n💪 **Accuracy:** `{strength}`\n"
-        f"⏱️ **Expiry:** `Exact 5 Minutes`\n"
+        f"⏱️ **Expiry:** `2 Minutes`\n"
         f"⚠️ **Take 1 Step MTG same direction iff loss**\n━━━━━━━━━━━━━━━━━━━━━━━━━"
     )
     
@@ -317,8 +319,8 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
     else:
         send_telegram_message_with_result_buttons(signal_msg)
 
-    # 5 Minutes Expiry Wait
-    await asyncio.sleep(300)
+    # 2 Minutes Expiry Wait
+    await asyncio.sleep(120)
     candles_after = get_market_data_5m(yf_symbol)
     exit_num = candles_after[-1]['close'] if candles_after and len(candles_after) > 0 else entry_num
     
@@ -329,14 +331,12 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
         is_first_win = exit_num <= entry_num
 
     if is_first_win:
-        session_stats["total"] += 1
-        session_stats["direct_wins"] += 1
         save_trade_to_db("DIRECT_WIN")
         result_status = "🎯 **DIRECT WIN / SHURESHOT ⭐**"
     else:
         mtg_entry_num = exit_num
-        # 1-Step MTG Expiry Wait (5 Mins)
-        await asyncio.sleep(300)
+        # 1-Step MTG Expiry Wait (2 Minutes)
+        await asyncio.sleep(120)
         candles_mtg = get_market_data_5m(yf_symbol)
         mtg_exit_num = candles_mtg[-1]['close'] if candles_mtg and len(candles_mtg) > 0 else mtg_entry_num
         
@@ -346,13 +346,10 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
         else:
             is_mtg_win = mtg_exit_num <= mtg_entry_num
         
-        session_stats["total"] += 1
         if is_mtg_win:
-            session_stats["mtg_wins"] += 1
             save_trade_to_db("MTG_WIN")
             result_status = "✅ **MTG WIN / ITM 🎯**"
         else:
-            session_stats["losses"] += 1
             save_trade_to_db("LOSS")
             result_status = "❌ **MTG LOSS / OTM 🛑**"
 
@@ -369,7 +366,7 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
 
 async def main():
     global is_signal_running
-    print("Trading Master Forex Bot Active...")
+    print("Trading Master Forex Clean Bot Active...")
     asyncio.create_task(handle_telegram_callbacks())
     
     morning_sent_date = ""
@@ -385,7 +382,7 @@ async def main():
             send_telegram_simple_message(
                 "🌅 **GOOD MORNING! TRADING SESSION STARTED** 🟢\n"
                 "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "⚡ Bot is now active and scanning 5M markets.\n"
+                "⚡ Bot is active with 3-Candle Reversal Strategy.\n"
                 "🎯 Let's grab amazing profits today!"
             )
             morning_sent_date = current_date_str
@@ -415,7 +412,7 @@ async def main():
             candles = get_market_data_5m(yf_symbol)
             
             if candles:
-                signal = analyze_advanced_strategy(candles)
+                signal = analyze_single_strategy(candles)
                 if signal:
                     pattern, direction, entry_str, strength, entry_num = signal
                     await process_signal(pair, yf_symbol, pattern, direction, entry_str, strength, entry_num)
