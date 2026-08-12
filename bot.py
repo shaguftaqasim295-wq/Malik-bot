@@ -9,48 +9,19 @@ from datetime import datetime, timedelta
 from playwright.async_api import async_playwright
 
 # ==========================================
-# ⚙️ TRADING MASTER FOREX - 3M ANALYZE / 2M SIGNAL
+# ⚙️ TRADING MASTER FOREX - REAL DATA BOT
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8689746853:AAHgj8KPZ6jUcejQ7vKmv_jcAjhwUMAZ-3Q"
 CHANNEL_CHAT_ID = "@TradingMasterforex5099"
-HISTORY_FILE = "trading_history_v2.json"
+HISTORY_FILE = "trading_history_real.json"
 
 QUOTEX_ASSETS_MAP = {
     "EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X", "USD/JPY": "USDJPY=X",
-    "USD/CHF": "USDCHF=X", "USD/CAD": "USDCAD=X", "AUD/USD": "AUDUSD=X",
-    "NZD/USD": "NZDUSD=X", "EUR/GBP": "EURGBP=X", "EUR/JPY": "EURJPY=X",
-    "GBP/JPY": "GBPJPY=X", "AUD/JPY": "AUDJPY=X", "CAD/JPY": "CADJPY=X"
+    "USD/CHF": "USDCHF=X", "USD/CAD": "USDCAD=X", "AUD/USD": "AUDUSD=X"
 }
 
 is_signal_running = False
 last_signal_timestamp = 0
-
-# --- NEWS & MARKET STATUS ---
-def get_upcoming_news_schedule():
-    try:
-        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            events = response.json()
-            now_utc = datetime.utcnow()
-            upcoming_list = []
-            for event in events:
-                if event.get("impact") == "High":
-                    date_str = event.get("date")
-                    if date_str:
-                        event_time = datetime.strptime(date_str[:19], "%Y-%m-%dT%H:%M:%S")
-                        if event_time >= now_utc:
-                            upcoming_list.append({
-                                "time": event_time.strftime("%Y-%m-%d | %H:%M UTC"),
-                                "currency": event.get("country", "USD"),
-                                "title": event.get("title", "News")
-                            })
-                            if len(upcoming_list) >= 4:
-                                break
-            return upcoming_list
-    except:
-        pass
-    return []
 
 # --- DATABASE FUNCTIONS ---
 def load_history():
@@ -68,7 +39,6 @@ def save_trade_to_db(result_type):
         "timestamp": time.time(),
         "datetime": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
         "date": datetime.utcnow().strftime("%Y-%m-%d"),
-        "month": datetime.utcnow().strftime("%Y-%m"),
         "result": result_type
     }
     history.append(trade_record)
@@ -78,35 +48,6 @@ def save_trade_to_db(result_type):
     except:
         pass
 
-def get_stats_by_period(period_type):
-    history = load_history()
-    now = datetime.utcnow()
-    d_wins, m_wins, losses = 0, 0, 0
-    for trade in history:
-        try:
-            trade_date = trade.get("date", "")
-            trade_month = trade.get("month", trade_date[:7])
-            match = False
-            
-            if period_type == "day":
-                if trade_date == now.strftime("%Y-%m-%d"): 
-                    match = True
-            elif period_type == "month":
-                if trade_month == now.strftime("%Y-%m"): 
-                    match = True
-                
-            if match:
-                res = trade["result"]
-                if res == "DIRECT_WIN": d_wins += 1
-                elif res == "MTG_WIN": m_wins += 1
-                elif res == "LOSS": losses += 1
-        except:
-            continue
-    total_wins = d_wins + m_wins
-    total = total_wins + losses
-    accuracy = (total_wins / total * 100) if total > 0 else 0.0
-    return total, d_wins, m_wins, losses, accuracy
-
 def get_inline_keyboard(pair="EURUSD"):
     tv_symbol = pair.replace('/', '')
     tradingview_url = f"https://www.tradingview.com/chart/?symbol={tv_symbol}"
@@ -114,35 +55,10 @@ def get_inline_keyboard(pair="EURUSD"):
         "inline_keyboard": [
             [
                 {"text": "📊 View Chart", "url": tradingview_url},
-                {"text": "📅 Today Result", "callback_data": "res_day"}
-            ],
-            [
-                {"text": "📈 Monthly Result", "callback_data": "res_month"},
-                {"text": "🌐 Market & News", "callback_data": "res_news"}
+                {"text": "🌐 Market Live", "url": "https://quotex.com"}
             ]
         ]
     }
-
-def send_telegram_message_with_buttons(text, pair):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        'chat_id': CHANNEL_CHAT_ID, 
-        'text': text, 
-        'parse_mode': 'Markdown',
-        'reply_markup': get_inline_keyboard(pair)
-    }
-    try:
-        requests.post(url, json=payload, timeout=20)
-    except:
-        pass
-
-def send_telegram_simple_message(text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {'chat_id': CHANNEL_CHAT_ID, 'text': text, 'parse_mode': 'Markdown'}
-    try:
-        requests.post(url, data=payload, timeout=20)
-    except:
-        pass
 
 def send_telegram_photo_with_buttons(photo_path, caption, pair):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
@@ -164,68 +80,18 @@ def send_telegram_photo_with_buttons(photo_path, caption, pair):
             time.sleep(1)
     return False
 
-# --- TELEGRAM CALLBACK LISTENER ---
-async def handle_telegram_callbacks():
-    offset = 0
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
-    
+def send_telegram_message(text, pair):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        'chat_id': CHANNEL_CHAT_ID, 
+        'text': text, 
+        'parse_mode': 'Markdown',
+        'reply_markup': get_inline_keyboard(pair)
+    }
     try:
-        res = requests.get(url, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            if data.get("result"):
-                offset = data["result"][-1]["update_id"] + 1
+        requests.post(url, json=payload, timeout=20)
     except:
         pass
-
-    while True:
-        try:
-            response = requests.get(url, params={"offset": offset, "timeout": 30}, timeout=35)
-            if response.status_code == 200:
-                data = response.json()
-                for update in data.get("result", []):
-                    offset = update["update_id"] + 1
-                    if "callback_query" in update:
-                        cq = update["callback_query"]
-                        callback_data = cq.get("data", "")
-                        query_id = cq["id"]
-                        
-                        ans_text = ""
-                        if callback_data == "res_news":
-                            news_items = get_upcoming_news_schedule()
-                            if news_items:
-                                ans_text = "📰 *UPCOMING HIGH IMPACT NEWS* 📰\n━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                                for item in news_items:
-                                    ans_text += f"🗓️ `{item['time']}` | {item['currency']} | {item['title']}\n"
-                            else:
-                                ans_text = "📰 *FOREX NEWS*\nNo major high-impact news right now. Market is stable!"
-                        else:
-                            period = "day"
-                            title = "📊 TODAY'S RESULTS SUMMARY"
-                            if callback_data == "res_month":
-                                period = "month"
-                                title = "📈 THIS MONTH'S RESULTS SUMMARY"
-                                
-                            total, d_wins, m_wins, losses, acc = get_stats_by_period(period)
-                            t_wins = d_wins + m_wins
-                            ans_text = (
-                                f"*{title}*\n"
-                                f"━━━━━━━━━━━━━━━━━━━\n"
-                                f"🎯 **Total Signals:** `{total}`\n"
-                                f"⭐ **Direct Wins:** `{d_wins}`\n"
-                                f"✅ **MTG Wins:** `{m_wins}`\n"
-                                f"🏆 **Total Wins:** `{t_wins}`\n"
-                                f"❌ **Losses:** `{losses}`\n"
-                                f"📈 **Accuracy:** `{acc:.2f}%`\n"
-                                f"━━━━━━━━━━━━━━━━━━━"
-                            )
-                        
-                        ans_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery"
-                        requests.post(ans_url, json={"callback_query_id": query_id, "text": "Loaded", "show_alert": False})
-                        send_telegram_simple_message(ans_text)
-        except:
-            pass
-        await asyncio.sleep(2)
 
 # --- TRADINGVIEW SCREENSHOT CAPTURE ---
 async def capture_chart(pair: str, output_path: str):
@@ -233,7 +99,7 @@ async def capture_chart(pair: str, output_path: str):
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page(viewport={"width": 1280, "height": 750})
-        url = f"https://s.tradingview.com/widgetembed/?symbol=FX:{tv_symbol}&interval=3&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Asia/Karachi"
+        url = f"https://s.tradingview.com/widgetembed/?symbol=FX:{tv_symbol}&interval=5&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Asia/Karachi"
         
         for _ in range(3):
             try:
@@ -246,39 +112,42 @@ async def capture_chart(pair: str, output_path: str):
                 await asyncio.sleep(2)
         await browser.close()
 
-# --- MARKET DATA FETCHING (3 MINUTE TIMEFRAME) ---
-def get_market_data_3m(yf_symbol):
+# --- REAL MARKET DATA FETCHING ---
+def get_real_market_data(yf_symbol):
     try:
         ticker = yf.Ticker(yf_symbol)
-        df = ticker.history(period="1d", interval="3m", auto_adjust=True)
+        df = ticker.history(period="1d", interval="5m", auto_adjust=True)
         if df is not None and not df.empty and len(df) >= 2:
-            last_row = df.iloc[-1]
             prev_row = df.iloc[-2]
+            curr_row = df.iloc[-1]
             return {
-                'prev': {'open': float(prev_row['Open']), 'close': float(prev_row['Close'])},
-                'curr': {'open': float(last_row['Open']), 'close': float(last_row['Close'])}
+                'prev_open': float(prev_row['Open']),
+                'prev_close': float(prev_row['Close']),
+                'current_price': float(curr_row['Close'])
             }
-    except:
-        pass
+    except Exception as e:
+        print(f"Data error for {yf_symbol}: {e}")
     return None
 
-# --- STRATEGY: 3M CANDLE ANALYZE ---
-def analyze_strategy(data):
+# --- STRATEGY: REAL CANDLE COLOR CHECK ---
+def analyze_real_strategy(data):
     if not data: return None
-    c1 = data['prev'] # Completed previous 3m candle
-    entry_price = data['curr']['open']
     
-    is_green = (c1['close'] > c1['open'])
-    is_red = (c1['close'] < c1['open'])
+    # Strategy: Agar pichli 5m candle Green hai toh CALL, warna PUT
+    is_green = data['prev_close'] > data['prev_open']
+    is_red = data['prev_close'] < data['prev_open']
+    
+    entry_price = data['current_price']
     
     if is_green:
-        return ("🟢 3M Green Candle", "CALL 🟢", f"{entry_price:.5f}", entry_price)
+        return ("CALL 🟢", f"{entry_price:.5f}", entry_price)
     elif is_red:
-        return ("🔴 3M Red Candle", "PUT 🔻", f"{entry_price:.5f}", entry_price)
+        return ("PUT 🔻", f"{entry_price:.5f}", entry_price)
+        
     return None
 
-# --- PROCESS SIGNAL (2 MINUTES EXPIRY) ---
-async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str, entry_str: str, entry_num: float):
+# --- PROCESS REAL SIGNAL ---
+async def process_real_signal(pair: str, yf_symbol: str, direction: str, entry_str: str, entry_num: float):
     global is_signal_running, last_signal_timestamp
     
     is_signal_running = True
@@ -289,10 +158,11 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
     result_img = f"result_{timestamp}.png"
     
     await capture_chart(pair, live_img)
+    
     signal_msg = (
-        f"📊 *VIP TRADING SIGNAL* 📊\n\n"
+        f"📊 *VIP REAL TRADING SIGNAL* 📊\n\n"
         f"💱 Asset: *{pair}*\n"
-        f"⏰ Analyze TF: *3 Minutes Candle*\n"
+        f"⏰ Timeframe: *5 Minutes Candle*\n"
         f"📍 Entry Point: *{entry_str}*\n"
         f"🎯 Direction: *{direction}*\n"
         f"⏱️ Expiry: *2 Minutes*\n"
@@ -305,12 +175,14 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
         try: os.remove(live_img)
         except: pass
     else:
-        send_telegram_message_with_buttons(signal_msg, pair)
+        send_telegram_message(signal_msg, pair)
 
     # 2 Minutes Expiry Wait (120 seconds)
     await asyncio.sleep(120)
-    data_after = get_market_data_3m(yf_symbol)
-    exit_num = data_after['curr']['close'] if data_after else entry_num
+    
+    # Check Result using Real Data
+    data_after = get_real_market_data(yf_symbol)
+    exit_num = data_after['current_price'] if data_after else entry_num
     
     is_first_win = (exit_num >= entry_num) if "CALL" in direction else (exit_num <= entry_num)
 
@@ -321,8 +193,8 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
         mtg_entry_num = exit_num
         # 1 Step Martingale (2 Minutes Expiry in Same Direction)
         await asyncio.sleep(120)
-        data_mtg = get_market_data_3m(yf_symbol)
-        mtg_exit_num = data_mtg['curr']['close'] if data_mtg else mtg_entry_num
+        data_mtg = get_real_market_data(yf_symbol)
+        mtg_exit_num = data_mtg['current_price'] if data_mtg else mtg_entry_num
         
         is_mtg_win = (mtg_exit_num >= mtg_entry_num) if "CALL" in direction else (mtg_exit_num <= mtg_entry_num)
         
@@ -341,47 +213,40 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
         try: os.remove(result_img)
         except: pass
     else:
-        send_telegram_message_with_buttons(result_msg, pair)
+        send_telegram_message(result_msg, pair)
 
     is_signal_running = False
 
+# --- MAIN LOOP ---
 async def main():
     global is_signal_running, last_signal_timestamp
-    print("Trading Master Forex 3M/2M Bot Active...")
-    asyncio.create_task(handle_telegram_callbacks())
+    print("Trading Master Real Data Bot Initialized...")
     
     while True:
-        now_pk = datetime.utcnow() + timedelta(hours=5)
-        current_hour = now_pk.hour
-        
-        if not (10 <= current_hour < 22):
-            await asyncio.sleep(60)
-            continue
-
         if is_signal_running:
             await asyncio.sleep(10)
             continue
 
-        # 3 Minutes (180 seconds) Gap Check between signals
+        # 3 Minutes gap between consecutive signals to avoid spam
         if last_signal_timestamp > 0 and (time.time() - last_signal_timestamp < 180):
             await asyncio.sleep(10)
             continue
 
-        signal_found = False
+        signal_sent = False
         for pair, yf_symbol in QUOTEX_ASSETS_MAP.items():
-            print(f"Scanning 3M Market -> {pair}                    ", end="\r")
-            data = get_market_data_3m(yf_symbol)
+            print(f"Scanning Real Market -> {pair}                  ", end="\r")
+            data = get_real_market_data(yf_symbol)
             
             if data:
-                signal = analyze_strategy(data)
+                signal = analyze_real_strategy(data)
                 if signal:
-                    pattern, direction, entry_str, entry_num = signal
-                    await process_signal(pair, yf_symbol, pattern, direction, entry_str, entry_num)
-                    signal_found = True
-                    break  
+                    direction, entry_str, entry_num = signal
+                    await process_real_signal(pair, yf_symbol, direction, entry_str, entry_num)
+                    signal_sent = True
+                    break
                     
-        if not signal_found:
-            await asyncio.sleep(10)
+        if not signal_sent:
+            await asyncio.sleep(15)
 
 if __name__ == "__main__":
     asyncio.run(main())
