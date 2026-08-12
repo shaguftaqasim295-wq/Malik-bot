@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from playwright.async_api import async_playwright
 
 # ==========================================
-# ⚙️ TRADING MASTER FOREX - 5M CANDLE STRATEGY BOT
+# ⚙️ TRADING MASTER FOREX - FIXED & FAST BOT
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8689746853:AAHgj8KPZ6jUcejQ7vKmv_jcAjhwUMAZ-3Q"
 CHANNEL_CHAT_ID = "@TradingMasterforex5099"
@@ -246,20 +246,20 @@ async def capture_chart(pair: str, output_path: str):
                 await asyncio.sleep(2)
         await browser.close()
 
+# --- FIXED MARKET DATA FETCHING ---
 def get_market_data_5m(yf_symbol):
     try:
         ticker = yf.Ticker(yf_symbol)
-        df = ticker.history(period="2d", interval="5m", auto_adjust=True, timeout=10)
-        if not df.empty and len(df) >= 2:
-            candles = []
-            for i in range(-2, 0):
-                row = df.iloc[i]
-                candles.append({
-                    'open': float(row['Open']), 'high': float(row['High']),
-                    'low': float(row['Low']), 'close': float(row['Close'])
-                })
+        df = ticker.history(period="1d", interval="5m", auto_adjust=True)
+        if df is not None and not df.empty and len(df) >= 2:
+            last_row = df.iloc[-1]
+            prev_row = df.iloc[-2]
+            candles = [
+                {'open': float(prev_row['Open']), 'close': float(prev_row['Close'])},
+                {'open': float(last_row['Open']), 'close': float(last_row['Close'])}
+            ]
             return candles
-    except:
+    except Exception as e:
         pass
     return None
 
@@ -347,7 +347,7 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
 
 async def main():
     global is_signal_running, last_signal_timestamp
-    print("Trading Master Forex Strategy Bot Active...")
+    print("Trading Master Forex Fixed Bot Active...")
     asyncio.create_task(handle_telegram_callbacks())
     
     while True:
@@ -381,7 +381,7 @@ async def main():
                     break  
                     
         if not signal_found:
-            await asyncio.sleep(30)
+            await asyncio.sleep(10)
 
 if __name__ == "__main__":
     asyncio.run(main())
