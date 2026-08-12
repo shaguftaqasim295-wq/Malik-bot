@@ -1,32 +1,28 @@
-name: Run Trading Bot
+name: Malik VIP Bot Auto Run
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '0 5 * * *'  # Pakistan time ke mutabiq subha 10:00 AM par trigger karega
-  workflow_dispatch:      # GitHub website se manually run karne ke liye
+    # Ab bot har 5 minutes baad check karega
+    - cron: '*/5 * * * *'
 
 jobs:
   build-and-run:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pytz playwright
+          playwright install chromium
 
-    - name: Install Playwright Browsers
-      run: |
-        playwright install
-
-    - name: Run Bot
-      run: |
-        python bot.py
+      - name: Run Bot Script
+        run: python bot.py
