@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from playwright.async_api import async_playwright
 
 # ==========================================
-# ⚙️ TRADING MASTER FOREX - FIXED & FAST BOT
+# ⚙️ TRADING MASTER FOREX - 3M ANALYZE / 2M SIGNAL
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8689746853:AAHgj8KPZ6jUcejQ7vKmv_jcAjhwUMAZ-3Q"
 CHANNEL_CHAT_ID = "@TradingMasterforex5099"
@@ -52,7 +52,7 @@ def get_upcoming_news_schedule():
         pass
     return []
 
-# --- DATABASE FUNCTIONS (DAY & MONTH UPGRADED MEMORY) ---
+# --- DATABASE FUNCTIONS ---
 def load_history():
     if os.path.exists(HISTORY_FILE):
         try:
@@ -233,7 +233,7 @@ async def capture_chart(pair: str, output_path: str):
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page(viewport={"width": 1280, "height": 750})
-        url = f"https://s.tradingview.com/widgetembed/?symbol=FX:{tv_symbol}&interval=5&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Asia/Karachi"
+        url = f"https://s.tradingview.com/widgetembed/?symbol=FX:{tv_symbol}&interval=3&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Asia/Karachi"
         
         for _ in range(3):
             try:
@@ -246,38 +246,38 @@ async def capture_chart(pair: str, output_path: str):
                 await asyncio.sleep(2)
         await browser.close()
 
-# --- FIXED MARKET DATA FETCHING ---
-def get_market_data_5m(yf_symbol):
+# --- MARKET DATA FETCHING (3 MINUTE TIMEFRAME) ---
+def get_market_data_3m(yf_symbol):
     try:
         ticker = yf.Ticker(yf_symbol)
-        df = ticker.history(period="1d", interval="5m", auto_adjust=True)
+        df = ticker.history(period="1d", interval="3m", auto_adjust=True)
         if df is not None and not df.empty and len(df) >= 2:
             last_row = df.iloc[-1]
             prev_row = df.iloc[-2]
-            candles = [
-                {'open': float(prev_row['Open']), 'close': float(prev_row['Close'])},
-                {'open': float(last_row['Open']), 'close': float(last_row['Close'])}
-            ]
-            return candles
-    except Exception as e:
+            return {
+                'prev': {'open': float(prev_row['Open']), 'close': float(prev_row['Close'])},
+                'curr': {'open': float(last_row['Open']), 'close': float(last_row['Close'])}
+            }
+    except:
         pass
     return None
 
-# --- STRATEGY: 5M GREEN -> CALL | 5M RED -> PUT (SAME DIRECTION FOR MTG) ---
-def analyze_strategy(candles):
-    if not candles or len(candles) < 2: return None
-    c2 = candles[-1] # Completed previous 5m candle
-    entry_price = c2['close']
+# --- STRATEGY: 3M CANDLE ANALYZE ---
+def analyze_strategy(data):
+    if not data: return None
+    c1 = data['prev'] # Completed previous 3m candle
+    entry_price = data['curr']['open']
     
-    is_green = (c2['close'] > c2['open'])
-    is_red = (c2['close'] < c2['open'])
+    is_green = (c1['close'] > c1['open'])
+    is_red = (c1['close'] < c1['open'])
     
     if is_green:
-        return ("🟢 5M Green Candle", "CALL 🟢", f"{entry_price:.5f}", entry_price)
+        return ("🟢 3M Green Candle", "CALL 🟢", f"{entry_price:.5f}", entry_price)
     elif is_red:
-        return ("🔴 5M Red Candle", "PUT 🔻", f"{entry_price:.5f}", entry_price)
+        return ("🔴 3M Red Candle", "PUT 🔻", f"{entry_price:.5f}", entry_price)
     return None
 
+# --- PROCESS SIGNAL (2 MINUTES EXPIRY) ---
 async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str, entry_str: str, entry_num: float):
     global is_signal_running, last_signal_timestamp
     
@@ -292,10 +292,10 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
     signal_msg = (
         f"📊 *VIP TRADING SIGNAL* 📊\n\n"
         f"💱 Asset: *{pair}*\n"
-        f"⏰ Timeframe: *5 Minutes Candle*\n"
+        f"⏰ Analyze TF: *3 Minutes Candle*\n"
         f"📍 Entry Point: *{entry_str}*\n"
         f"🎯 Direction: *{direction}*\n"
-        f"⏱️ Expiry: *5 Minutes*\n"
+        f"⏱️ Expiry: *2 Minutes*\n"
         f"🔄 Martingale: *1 Step MTG (Same Direction)* ➔ *{direction}*\n\n"
         f"⚠️ Trade at your own risk!"
     )
@@ -307,10 +307,10 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
     else:
         send_telegram_message_with_buttons(signal_msg, pair)
 
-    # 5 Minutes Expiry Wait
-    await asyncio.sleep(300)
-    candles_after = get_market_data_5m(yf_symbol)
-    exit_num = candles_after[-1]['close'] if candles_after and len(candles_after) > 0 else entry_num
+    # 2 Minutes Expiry Wait (120 seconds)
+    await asyncio.sleep(120)
+    data_after = get_market_data_3m(yf_symbol)
+    exit_num = data_after['curr']['close'] if data_after else entry_num
     
     is_first_win = (exit_num >= entry_num) if "CALL" in direction else (exit_num <= entry_num)
 
@@ -319,10 +319,10 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
         result_status = "🎯 *DIRECT WIN / SHURESHOT ⭐*"
     else:
         mtg_entry_num = exit_num
-        # 1 Step Martingale (Next 5 Minutes Expiry in Same Direction)
-        await asyncio.sleep(300)
-        candles_mtg = get_market_data_5m(yf_symbol)
-        mtg_exit_num = candles_mtg[-1]['close'] if candles_mtg and len(candles_mtg) > 0 else mtg_entry_num
+        # 1 Step Martingale (2 Minutes Expiry in Same Direction)
+        await asyncio.sleep(120)
+        data_mtg = get_market_data_3m(yf_symbol)
+        mtg_exit_num = data_mtg['curr']['close'] if data_mtg else mtg_entry_num
         
         is_mtg_win = (mtg_exit_num >= mtg_entry_num) if "CALL" in direction else (mtg_exit_num <= mtg_entry_num)
         
@@ -347,7 +347,7 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
 
 async def main():
     global is_signal_running, last_signal_timestamp
-    print("Trading Master Forex Fixed Bot Active...")
+    print("Trading Master Forex 3M/2M Bot Active...")
     asyncio.create_task(handle_telegram_callbacks())
     
     while True:
@@ -362,18 +362,18 @@ async def main():
             await asyncio.sleep(10)
             continue
 
-        # Strict 5 Minutes (300 seconds) Gap Check
-        if last_signal_timestamp > 0 and (time.time() - last_signal_timestamp < 300):
+        # 3 Minutes (180 seconds) Gap Check between signals
+        if last_signal_timestamp > 0 and (time.time() - last_signal_timestamp < 180):
             await asyncio.sleep(10)
             continue
 
         signal_found = False
         for pair, yf_symbol in QUOTEX_ASSETS_MAP.items():
-            print(f"Scanning 5M Market -> {pair}                    ", end="\r")
-            candles = get_market_data_5m(yf_symbol)
+            print(f"Scanning 3M Market -> {pair}                    ", end="\r")
+            data = get_market_data_3m(yf_symbol)
             
-            if candles:
-                signal = analyze_strategy(candles)
+            if data:
+                signal = analyze_strategy(data)
                 if signal:
                     pattern, direction, entry_str, entry_num = signal
                     await process_signal(pair, yf_symbol, pattern, direction, entry_str, entry_num)
