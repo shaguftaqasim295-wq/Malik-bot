@@ -2,6 +2,8 @@ import asyncio
 from playwright.async_api import async_playwright
 import requests
 import random
+from datetime import datetime
+import pytz
 
 TELEGRAM_BOT_TOKEN = "8689746853:AAG_UT6VQe7I4MhiDgVtieXx9u2-HqOz72Y"
 CHANNEL_CHAT_ID = "@TradingMasterforex5099"
@@ -14,8 +16,31 @@ FOREX_PAIRS = [
     "USD/NOK", "USD/SEK", "USD/SGD", "USD/TRY", "USD/ZAR"
 ]
 
+def check_market_time():
+    # Pakistan Time Zone (PKT)
+    pkt_tz = pytz.timezone('Asia/Karachi')
+    now_pkt = datetime.now(pkt_tz)
+    
+    # Check Saturday (5) and Sunday (6)
+    if now_pkt.weekday() >= 5:
+        print("Weekend hai (Saturday/Sunday). Bot off rahega.")
+        return False
+        
+    # Check Time: 10:00 AM to 10:00 PM (22:00)
+    if 10 <= now_pkt.hour < 22:
+        return True
+    else:
+        print(f"Time match nahi karta ({now_pkt.strftime('%H:%M')}). Bot sirf Subah 10 se Raat 10 tak chalta hai.")
+        return False
+
 async def run_bot_scan():
-    button_type = "SNR"
+    # Pehle time aur day check karein
+    if not check_market_time():
+        return
+
+    button_types = ["SNR", "Strong Trend", "FVG", "Breakout"]
+    button_type = random.choice(button_types)
+    
     print(f"[{button_type}] Scanner run ho raha hai 25 pairs par...")
     
     scanned_pair = random.choice(FOREX_PAIRS)
@@ -70,40 +95,16 @@ async def run_bot_scan():
         f"⚡ _Malik VIP Premium Bot_"
     )
     
-    # Telegram Channel ke liye Inline Buttons (URL links ya broker link ke sath)
-    inline_keyboard = {
-        "inline_keyboard": [
-            [
-                {"text": "📊 SNR", "url": "https://t.me/TradingMasterforex5099"},
-                {"text": "🚀 Strong Trend", "url": "https://t.me/TradingMasterforex5099"}
-            ],
-            [
-                {"text": "📐 FVG", "url": "https://t.me/TradingMasterforex5099"},
-                {"text": "⚡ Breakout", "url": "https://t.me/TradingMasterforex5099"}
-            ]
-        ]
-    }
-    
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto" if screenshot_path else f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
     try:
         if screenshot_path:
             with open(screenshot_path, 'rb') as photo_file:
-                payload = {
-                    'chat_id': CHANNEL_CHAT_ID, 
-                    'caption': caption_text, 
-                    'parse_mode': 'Markdown',
-                    'reply_markup': str(inline_keyboard).replace("'", '"')
-                }
+                payload = {'chat_id': CHANNEL_CHAT_ID, 'caption': caption_text, 'parse_mode': 'Markdown'}
                 files = {'photo': photo_file}
                 response = requests.post(url, data=payload, files=files, timeout=30)
         else:
-            payload = {
-                'chat_id': CHANNEL_CHAT_ID, 
-                'text': caption_text, 
-                'parse_mode': 'Markdown',
-                'reply_markup': inline_keyboard
-            }
+            payload = {'chat_id': CHANNEL_CHAT_ID, 'text': caption_text, 'parse_mode': 'Markdown'}
             response = requests.post(url, json=payload, timeout=30)
             
         print("TELEGRAM STATUS CODE:", response.status_code)
