@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from playwright.async_api import async_playwright
 
 # ==========================================
-# ⚙️ TRADING MASTER FOREX - PERFECT BOT
+# ⚙️ TRADING MASTER FOREX - 5M CANDLE STRATEGY BOT
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8689746853:AAHgj8KPZ6jUcejQ7vKmv_jcAjhwUMAZ-3Q"
 CHANNEL_CHAT_ID = "@TradingMasterforex5099"
@@ -250,9 +250,9 @@ def get_market_data_5m(yf_symbol):
     try:
         ticker = yf.Ticker(yf_symbol)
         df = ticker.history(period="2d", interval="5m", auto_adjust=True, timeout=10)
-        if not df.empty and len(df) >= 5:
+        if not df.empty and len(df) >= 2:
             candles = []
-            for i in range(-4, 0):
+            for i in range(-2, 0):
                 row = df.iloc[i]
                 candles.append({
                     'open': float(row['Open']), 'high': float(row['High']),
@@ -263,19 +263,19 @@ def get_market_data_5m(yf_symbol):
         pass
     return None
 
-# --- STRATEGY: 3 CONSECUTIVE CANDLES REVERSAL ---
+# --- STRATEGY: 5M GREEN -> CALL | 5M RED -> PUT (SAME DIRECTION FOR MTG) ---
 def analyze_strategy(candles):
-    if not candles or len(candles) < 3: return None
-    c1, c2, c3 = candles[-3], candles[-2], candles[-1]
-    entry_price = c3['close']
+    if not candles or len(candles) < 2: return None
+    c2 = candles[-1] # Completed previous 5m candle
+    entry_price = c2['close']
     
-    is_three_green = (c1['close'] > c1['open']) and (c2['close'] > c2['open']) and (c3['close'] > c3['open'])
-    is_three_red = (c1['close'] < c1['open']) and (c2['close'] < c2['open']) and (c3['close'] < c3['open'])
+    is_green = (c2['close'] > c2['open'])
+    is_red = (c2['close'] < c2['open'])
     
-    if is_three_green:
-        return ("🔴 3 Green Candles Reversal", "PUT 🔻", f"{entry_price:.5f}", entry_price)
-    elif is_three_red:
-        return ("🟢 3 Red Candles Reversal", "CALL 🟢", f"{entry_price:.5f}", entry_price)
+    if is_green:
+        return ("🟢 5M Green Candle", "CALL 🟢", f"{entry_price:.5f}", entry_price)
+    elif is_red:
+        return ("🔴 5M Red Candle", "PUT 🔻", f"{entry_price:.5f}", entry_price)
     return None
 
 async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str, entry_str: str, entry_num: float):
@@ -295,8 +295,8 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
         f"⏰ Timeframe: *5 Minutes Candle*\n"
         f"📍 Entry Point: *{entry_str}*\n"
         f"🎯 Direction: *{direction}*\n"
-        f"⏱️ Expiry: *2 Minutes*\n"
-        f"🔄 Martingale: *1 Step MTG* ➔ Direction: *{direction}*\n\n"
+        f"⏱️ Expiry: *5 Minutes*\n"
+        f"🔄 Martingale: *1 Step MTG (Same Direction)* ➔ *{direction}*\n\n"
         f"⚠️ Trade at your own risk!"
     )
     
@@ -307,8 +307,8 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
     else:
         send_telegram_message_with_buttons(signal_msg, pair)
 
-    # 2 Minutes Expiry Wait
-    await asyncio.sleep(120)
+    # 5 Minutes Expiry Wait
+    await asyncio.sleep(300)
     candles_after = get_market_data_5m(yf_symbol)
     exit_num = candles_after[-1]['close'] if candles_after and len(candles_after) > 0 else entry_num
     
@@ -319,7 +319,8 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
         result_status = "🎯 *DIRECT WIN / SHURESHOT ⭐*"
     else:
         mtg_entry_num = exit_num
-        await asyncio.sleep(120)
+        # 1 Step Martingale (Next 5 Minutes Expiry in Same Direction)
+        await asyncio.sleep(300)
         candles_mtg = get_market_data_5m(yf_symbol)
         mtg_exit_num = candles_mtg[-1]['close'] if candles_mtg and len(candles_mtg) > 0 else mtg_entry_num
         
@@ -346,7 +347,7 @@ async def process_signal(pair: str, yf_symbol: str, pattern: str, direction: str
 
 async def main():
     global is_signal_running, last_signal_timestamp
-    print("Trading Master Forex Perfect Bot Active...")
+    print("Trading Master Forex Strategy Bot Active...")
     asyncio.create_task(handle_telegram_callbacks())
     
     while True:
