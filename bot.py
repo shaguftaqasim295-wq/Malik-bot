@@ -1,10 +1,10 @@
-import os
-import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes
+import asyncio
 from playwright.async_api import async_playwright
+import requests
+import random
 
 TELEGRAM_BOT_TOKEN = "8689746853:AAG_UT6VQe7I4MhiDgVtieXx9u2-HqOz72Y"
+CHANNEL_CHAT_ID = "@TradingMasterforex5099"
 
 FOREX_PAIRS = [
     "EUR/USD", "GBP/USD", "USD/JPY", "EUR/JPY", "AUD/USD", 
@@ -14,116 +14,80 @@ FOREX_PAIRS = [
     "USD/NOK", "USD/SEK", "USD/SGD", "USD/TRY", "USD/ZAR"
 ]
 
-async def capture_chart(symbol_query):
-    screenshot_path = "chart_analysis.png"
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page(viewport={"width": 1280, "height": 720})
-        target_url = f"https://www.tradingview.com/chart/?symbol=FX:{symbol_query}"
-        try:
-            await page.goto(target_url, timeout=60000)
-            await asyncio.sleep(5)
-            await page.screenshot(path=screenshot_path)
-        except Exception:
-            screenshot_path = None
-        await browser.close()
-    return screenshot_path
-
-async def generate_signal(button_type):
-    pair = random.choice(FOREX_PAIRS)
-    symbol_query = pair.replace("/", "")
+async def run_bot_scan():
+    # Aap yahan apni marzi ka scanner select kar sakte hain: "SNR", "Strong Trend", "FVG", "Breakout"
+    button_type = "SNR"
     
-    # Mocking entry prices based on strategy
+    print(f"[{button_type}] Scanner run ho raha hai 25 pairs par...")
+    
+    scanned_pair = random.choice(FOREX_PAIRS)
+    symbol_query = scanned_pair.replace("/", "")
     base_price = round(random.uniform(1.0500, 150.0000), 4)
     
-    if button_type == "btn_snr":
+    if button_type == "SNR":
         title = "📊 SNR Scanner Analysis"
         condition = "Major Support Level"
         entry_point = f"{base_price} (Rejection expected)"
         idea = "CALL (UP) on candle timing"
-    elif button_type == "btn_trend":
+    elif button_type == "Strong Trend":
         title = "🚀 Strong Trend Scanner"
         condition = "Strong Bullish Momentum"
         entry_point = f"{base_price} (Pullback entry)"
         idea = "CONTINUE UP with trend timing"
-    elif button_type == "btn_fvg":
+    elif button_type == "FVG":
         title = "📐 FVG Scanner Analysis"
         condition = "Bullish Fair Value Gap"
         entry_point = f"{base_price} (Gap zone)"
         idea = "REVERSAL / FILL expected"
-    elif button_type == "btn_breakout":
+    else:
         title = "⚡ Breakout Scanner Analysis"
         condition = "Resistance Breakout"
         entry_point = f"{base_price} (Retest level)"
         idea = "MOMENTUM CONTINUATION entry"
-    else:
-        title = "📈 Malik VIP Bot Scan"
-        condition = "General Scan"
-        entry_point = str(base_price)
-        idea = "Monitor price action"
 
-    return pair, symbol_query, title, condition, entry_point, idea
+    # Playwright screenshot capture
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page(viewport={"width": 1280, "height": 720})
+        target_url = f"https://www.tradingview.com/chart/?symbol=FX:{symbol_query}"
+        
+        screenshot_path = "chart_analysis.png"
+        try:
+            print(f"Opening chart for {scanned_pair}...")
+            await page.goto(target_url, timeout=60000)
+            await asyncio.sleep(5)
+            await page.screenshot(path=screenshot_path)
+            print("Screenshot successfully captured!")
+        except Exception as e:
+            print("Browser error:", e)
+            screenshot_path = None
+        await browser.close()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("📊 SNR", callback_data="btn_snr"), InlineKeyboardButton("🚀 Strong Trend", callback_data="btn_trend")],
-        [InlineKeyboardButton("📐 FVG", callback_data="btn_fvg"), InlineKeyboardButton("⚡ Breakout", callback_data="btn_breakout")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("👋 *Welcome to Malik VIP Premium Bot*\n\nNeeche diye gaye buttons par click kar ke live analysis aur entry points hasil karein:", parse_mode="Markdown", reply_markup=reply_markup)
-
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    # Loading message
-    await query.edit_message_text(text="🔍 Scanning 25 Forex pairs & capturing chart screenshot...")
-    
-    pair, symbol_query, title, condition, entry_point, idea = await generate_signal(query.data)
-    screenshot_path = await capture_chart(symbol_query)
-    
-    caption = (
+    caption_text = (
         f"*{title}*\n\n"
-        f"• *Pair:* `{pair}`\n"
+        f"• *Pair:* `{scanned_pair}`\n"
         f"• *Condition:* {condition}\n"
         f"• *Entry Point:* `{entry_point}`\n"
         f"• *Signal Idea:* {idea}\n\n"
         f"⚡ _Malik VIP Premium Bot_"
     )
     
-    keyboard = [
-        [InlineKeyboardButton("📊 SNR", callback_data="btn_snr"), InlineKeyboardButton("🚀 Strong Trend", callback_data="btn_trend")],
-        [InlineKeyboardButton("📐 FVG", callback_data="btn_fvg"), InlineKeyboardButton("⚡ Breakout", callback_data="btn_breakout")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto" if screenshot_path else f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
-    if screenshot_path and os.path.exists(screenshot_path):
-        with open(screenshot_path, 'rb') as photo:
-            await context.bot.send_photo(
-                chat_id=query.message.chat_id,
-                photo=photo,
-                caption=caption,
-                parse_mode="Markdown",
-                reply_markup=reply_markup
-            )
-        try:
-            os.remove(screenshot_path)
-        except:
-            pass
-    else:
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=caption,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
+    try:
+        if screenshot_path:
+            with open(screenshot_path, 'rb') as photo_file:
+                payload = {'chat_id': CHANNEL_CHAT_ID, 'caption': caption_text, 'parse_mode': 'Markdown'}
+                files = {'photo': photo_file}
+                response = requests.post(url, data=payload, files=files, timeout=30)
+        else:
+            payload = {'chat_id': CHANNEL_CHAT_ID, 'text': caption_text, 'parse_mode': 'Markdown'}
+            response = requests.post(url, json=payload, timeout=30)
+            
+        print("TELEGRAM STATUS CODE:", response.status_code)
+        print("TELEGRAM RESPONSE:", response.text)
+    except Exception as e:
+        print("Telegram Send Error:", e)
 
 if __name__ == "__main__":
-    import asyncio
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    
-    print("Bot is running interactively...")
-    app.run_polling()
+    asyncio.run(run_bot_scan())
