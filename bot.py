@@ -15,9 +15,7 @@ FOREX_PAIRS = [
 ]
 
 async def run_bot_scan():
-    # Aap yahan apni marzi ka scanner select kar sakte hain: "SNR", "Strong Trend", "FVG", "Breakout"
     button_type = "SNR"
-    
     print(f"[{button_type}] Scanner run ho raha hai 25 pairs par...")
     
     scanned_pair = random.choice(FOREX_PAIRS)
@@ -72,16 +70,40 @@ async def run_bot_scan():
         f"⚡ _Malik VIP Premium Bot_"
     )
     
+    # Telegram Channel ke liye Inline Buttons (URL links ya broker link ke sath)
+    inline_keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "📊 SNR", "url": "https://t.me/TradingMasterforex5099"},
+                {"text": "🚀 Strong Trend", "url": "https://t.me/TradingMasterforex5099"}
+            ],
+            [
+                {"text": "📐 FVG", "url": "https://t.me/TradingMasterforex5099"},
+                {"text": "⚡ Breakout", "url": "https://t.me/TradingMasterforex5099"}
+            ]
+        ]
+    }
+    
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto" if screenshot_path else f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
     try:
         if screenshot_path:
             with open(screenshot_path, 'rb') as photo_file:
-                payload = {'chat_id': CHANNEL_CHAT_ID, 'caption': caption_text, 'parse_mode': 'Markdown'}
+                payload = {
+                    'chat_id': CHANNEL_CHAT_ID, 
+                    'caption': caption_text, 
+                    'parse_mode': 'Markdown',
+                    'reply_markup': str(inline_keyboard).replace("'", '"')
+                }
                 files = {'photo': photo_file}
                 response = requests.post(url, data=payload, files=files, timeout=30)
         else:
-            payload = {'chat_id': CHANNEL_CHAT_ID, 'text': caption_text, 'parse_mode': 'Markdown'}
+            payload = {
+                'chat_id': CHANNEL_CHAT_ID, 
+                'text': caption_text, 
+                'parse_mode': 'Markdown',
+                'reply_markup': inline_keyboard
+            }
             response = requests.post(url, json=payload, timeout=30)
             
         print("TELEGRAM STATUS CODE:", response.status_code)
